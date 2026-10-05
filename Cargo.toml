@@ -1,6 +1,6 @@
 [package]
 name = "codenotch"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "AI coding usage limits (Claude, Codex, Kiro) for the Noctalia bar on Linux/Wayland"
 license = "MIT"

@@ -43,9 +43,9 @@ local function tooltipRows()
     local value = #parts > 0 and table.concat(parts, " / ") or "–"
     local a = p.activity
     if a and a.state ~= "idle" then
-      value = value .. " · " .. fmt.ACTIVITY[a.state]
+      value = value .. " · " .. fmt.activity(a.state)
     elseif p.error then
-      value = value .. " · sin actualizar"
+      value = value .. " · " .. fmt.t("tooltip.stale")
     end
     local key = p.kind == "claude" and ("Claude " .. p.label) or p.label
     table.insert(rows, { key = key, value = value })
@@ -85,9 +85,7 @@ local function render()
     barWidget.render(container({ align = "center" }, {
       ui.glyph({ name = "gauge", size = 14, color = "on_surface/0.5" }),
     }))
-    barWidget.setTooltip(
-      (data and data.offline) and "codenotch: el daemon no está corriendo" or "codenotch: sin proveedores"
-    )
+    barWidget.setTooltip(fmt.t((data and data.offline) and "tooltip.offline" or "tooltip.no_providers"))
     return
   end
 

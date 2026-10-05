@@ -5,7 +5,7 @@
 //! consultar se usa el token que caduque más tarde. Nunca se escribe en
 //! `.credentials.json`; renovar el token es cosa de Claude Code.
 
-use crate::model::{clamp01, FetchError, Reading, Window};
+use crate::model::{clamp01, Amount, FetchError, Reading, Window};
 use crate::util::{home, now, parse_rfc3339, read_json};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -93,10 +93,10 @@ fn best_token(dirs: &[PathBuf]) -> Result<Token, FetchError> {
             })
         })
         .max_by_key(|t| t.expires_at)
-        .ok_or_else(|| FetchError::Auth("sin sesión de Claude".into()))?;
+        .ok_or_else(|| FetchError::Auth("no Claude sign-in".into()))?;
     if best.expires_at != 0 && best.expires_at < now() + 30 {
         return Err(FetchError::Auth(
-            "token caducado: abre Claude Code en esta cuenta".into(),
+            "token expired: open Claude Code with this account".into(),
         ));
     }
     Ok(best)
@@ -112,17 +112,17 @@ pub fn fetch(agent: &ureq::Agent, dirs: &[PathBuf]) -> Result<Reading, FetchErro
     let body: Value = match resp {
         Ok(r) => r
             .into_json()
-            .map_err(|e| FetchError::Other(format!("respuesta ilegible: {e}")))?,
+            .map_err(|e| FetchError::Other(format!("unreadable response: {e}")))?,
         Err(ureq::Error::Status(429, r)) => {
             return Err(FetchError::RateLimited(
                 r.header("retry-after").and_then(|s| s.trim().parse().ok()),
             ))
         }
         Err(ureq::Error::Status(401, _)) => {
-            return Err(FetchError::Auth("sesión rechazada (401): abre Claude Code".into()))
+            return Err(FetchError::Auth("sign-in rejected (401): open Claude Code".into()))
         }
         Err(ureq::Error::Status(code, _)) => return Err(FetchError::Other(format!("HTTP {code}"))),
-        Err(e) => return Err(FetchError::Other(format!("red: {e}"))),
+        Err(e) => return Err(FetchError::Network(format!("network: {e}"))),
     };
     Ok(Reading {
         windows: parse_usage(&body),
@@ -140,10 +140,10 @@ fn capitalize(s: &str) -> String {
 
 pub fn parse_usage(body: &Value) -> Vec<Window> {
     const WINDOWS: [(&str, &str, &str, i64); 4] = [
-        ("five_hour", "session", "Sesión 5 h", 5 * 3600),
-        ("seven_day", "week", "Semana", 7 * 86400),
-        ("seven_day_opus", "week_opus", "Semana · Opus", 7 * 86400),
-        ("seven_day_sonnet", "week_sonnet", "Semana · Sonnet", 7 * 86400),
+        ("five_hour", "session", "5-hour session", 5 * 3600),
+        ("seven_day", "week", "Week", 7 * 86400),
+        ("seven_day_opus", "week_opus", "Week · Opus", 7 * 86400),
+        ("seven_day_sonnet", "week_sonnet", "Week · Sonnet", 7 * 86400),
     ];
     let mut out = Vec::new();
     for (key, id, label, duration) in WINDOWS {
@@ -159,7 +159,8 @@ pub fn parse_usage(body: &Value) -> Vec<Window> {
             used: clamp01(pct / 100.0),
             resets_at: w.get("resets_at").and_then(Value::as_str).and_then(parse_rfc3339),
             duration: Some(duration),
-            detail: None,
+            group: None,
+            amount: None,
         });
     }
     // Uso extra de pago: solo cuando hay un tope mensual con el que comparar.
@@ -170,11 +171,12 @@ pub fn parse_usage(body: &Value) -> Vec<Window> {
             let cur = x.get("currency").and_then(Value::as_str).unwrap_or("USD");
             out.push(Window {
                 id: "extra".into(),
-                label: "Uso extra (mes)".into(),
+                label: "Extra usage (month)".into(),
                 used: clamp01(used / limit),
                 resets_at: None,
                 duration: None,
-                detail: Some(format!("{:.2} / {:.2} {cur}", used / 100.0, limit / 100.0)),
+                group: None,
+                amount: Some(Amount { used: used / 100.0, total: limit / 100.0, unit: cur.into() }),
             });
         }
     }
@@ -265,7 +267,7 @@ mod tests {
         assert_eq!(w[0].id, "session");
         assert!((w[0].used - 0.23).abs() < 1e-9);
         assert_eq!(w[0].resets_at, Some(1791171599));
-        assert_eq!(w[1].label, "Semana");
+        assert_eq!(w[1].label, "Week");
     }
 
     #[test]

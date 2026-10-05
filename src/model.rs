@@ -1,20 +1,34 @@
 use serde::{Deserialize, Serialize};
 
-/// Una ventana de límite: la sesión de 5 h, la semana, el mes de créditos…
+/// A limit window: the 5-hour session, the week, the month of credits…
+///
+/// `id` and `duration` are what a UI translates from; `label` is an English
+/// fallback for the CLI and for windows a UI does not know.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Window {
     pub id: String,
     pub label: String,
-    /// Fracción usada, 0–1.
+    /// Fraction used, 0–1.
     pub used: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resets_at: Option<i64>,
-    /// Duración de la ventana en segundos, cuando el proveedor la dice.
+    /// Window length in seconds, when the provider says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration: Option<i64>,
-    /// Texto extra para el panel, p. ej. "604.88 / 10000 créditos".
+    /// Vendor-given name of a secondary limit ("Code review"), shown as is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
+    pub group: Option<String>,
+    /// Absolute amounts behind the fraction, e.g. 604.88 of 10000 credits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amount: Option<Amount>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Amount {
+    pub used: f64,
+    pub total: f64,
+    /// `credits`, or an ISO currency code.
+    pub unit: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -27,18 +41,30 @@ pub struct Reading {
 
 #[derive(Debug)]
 pub enum FetchError {
-    /// Sin sesión válida: lo arregla el usuario abriendo la herramienta, no reintentar más.
+    /// No valid sign-in: the user fixes it by opening the tool, not by retrying.
     Auth(String),
-    /// HTTP 429. `retry_after` en segundos si el servidor lo dijo.
+    /// HTTP 429. `retry_after` in seconds when the server said.
     RateLimited(Option<i64>),
+    Network(String),
     Other(String),
 }
 
 impl FetchError {
+    /// Stable code a UI translates from.
+    pub fn code(&self) -> &'static str {
+        match self {
+            FetchError::Auth(_) => "auth",
+            FetchError::RateLimited(_) => "rate_limited",
+            FetchError::Network(_) => "network",
+            FetchError::Other(_) => "other",
+        }
+    }
+
+    /// English message for logs and the CLI.
     pub fn message(&self) -> String {
         match self {
-            FetchError::Auth(m) | FetchError::Other(m) => m.clone(),
-            FetchError::RateLimited(_) => "demasiadas consultas (429), en espera".into(),
+            FetchError::Auth(m) | FetchError::Network(m) | FetchError::Other(m) => m.clone(),
+            FetchError::RateLimited(_) => "too many requests (429), waiting".into(),
         }
     }
 }
@@ -51,13 +77,13 @@ pub fn clamp01(x: f64) -> f64 {
     }
 }
 
-/// "5 h", "Semana", "Mes"… a partir de la duración de la ventana.
+/// "5 h", "Week", "Month"… from the window length.
 pub fn duration_label(secs: i64) -> String {
     match secs {
-        s if s <= 0 => "Ventana".into(),
+        s if s <= 0 => "Window".into(),
         s if s < 86400 => format!("{} h", (s + 1800) / 3600),
-        s if (6 * 86400..=8 * 86400).contains(&s) => "Semana".into(),
-        s if (27 * 86400..=32 * 86400).contains(&s) => "Mes".into(),
-        s => format!("{} días", (s + 43200) / 86400),
+        s if (6 * 86400..=8 * 86400).contains(&s) => "Week".into(),
+        s if (27 * 86400..=32 * 86400).contains(&s) => "Month".into(),
+        s => format!("{} days", (s + 43200) / 86400),
     }
 }

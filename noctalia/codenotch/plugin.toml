@@ -1,16 +1,28 @@
 id          = "juanmcanchala/codenotch"
 name        = "Codenotch"
-version     = "0.1.0"
+version     = "0.2.0"
 plugin_api  = 24
 author      = "JuanMCanchala"
 license     = "MIT"
 icon        = "gauge"
-description = "Uso de los límites de Claude (varias cuentas), Codex y Kiro, y si Claude está trabajando o te espera."
+description = "How much of your Claude (any number of accounts), Codex and Kiro limits is left, and whether Claude is working or waiting on you."
 tags        = ["ai", "usage", "claude"]
 dependencies = ["codenotch"]
 
-# Lee $XDG_RUNTIME_DIR/codenotch/state.json (lo escribe `codenotch daemon`)
-# y lo publica para el widget y el panel.
+[[setting]]
+key             = "language"
+type            = "select"
+label_key       = "settings.language.label"
+description_key = "settings.language.description"
+default         = "auto"
+options = [
+  { value = "auto", label_key = "settings.language.auto" },
+  { value = "en", label_key = "settings.language.en" },
+  { value = "es", label_key = "settings.language.es" },
+]
+
+# Reads $XDG_RUNTIME_DIR/codenotch/state.json (written by `codenotch daemon`)
+# and publishes it to the widget and the panel.
 [[service]]
 id    = "service"
 entry = "service.luau"

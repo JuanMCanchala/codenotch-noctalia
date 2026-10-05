@@ -12,7 +12,8 @@ draws it with your theme.
   <img src="docs/panel.png" alt="Panel: every limit window with its usage and reset time" width="340">
 </p>
 
-> The UI is in Spanish for now — translations are welcome (see [Contributing](#contributing)).
+> English and Spanish are included; the UI follows Noctalia's language. Adding another one is a single JSON
+> file — see [Translations](#translations).
 
 ## Why another one
 
@@ -119,15 +120,32 @@ Optional, in `~/.config/codenotch/config.json`:
   "kiro_interval": 900,
   "codex": true,
   "kiro": true,
-  "alerts": true
+  "alerts": true,
+  "language": "auto"
 }
 ```
 
 `aliases` renames an account (by default the part of the email before the first `.`, `_` or `-`).
+`language` (`auto`, `en`, `es`) is the language of the desktop alerts; `auto` follows `LC_MESSAGES`.
+
+## Translations
+
+The daemon sends data, not text — window ids and lengths, amounts, error codes — and the plugin builds
+every string from `noctalia/codenotch/translations/<lang>.json`. By default it follows Noctalia's own
+language (`[shell] lang`, or your locale). To pin the widget to a language regardless of the shell:
+
+```toml
+[plugin_settings."juanmcanchala/codenotch"]
+language = "es"   # "auto" | "en" | "es"
+```
+
+To add a language, copy `en.json` to `<lang>.json` (BCP-47 or POSIX code, as Noctalia uses), translate
+the values and open a PR. Adding it to the `language` options in `plugin.toml` is optional — `auto`
+picks it up through Noctalia either way.
 
 ## Roadmap
 
-- English/other translations of the UI.
+- More translations of the UI.
 - Several Codex accounts (`~/.codex-<slug>` with `CODEX_HOME`), as upstream does.
 - More providers from upstream's list: Cursor, GitHub Copilot, OpenCode, GLM, Gemini/Antigravity.
 

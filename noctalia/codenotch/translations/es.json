@@ -1,4 +1,53 @@
 {
   "settings.show_percent.label": "Mostrar porcentajes",
-  "settings.show_percent.description": "Escribe el uso de cada proveedor junto a su icono. Apagado deja solo los iconos."
+  "settings.show_percent.description": "Escribe el uso de cada proveedor junto a su icono. Apagado deja solo los iconos.",
+  "settings.language.label": "Idioma",
+  "settings.language.description": "Idioma del widget y del panel. Automático sigue el idioma de Noctalia.",
+  "settings.language.auto": "Igual que Noctalia",
+  "settings.language.en": "English",
+  "settings.language.es": "Español",
+
+  "panel.title": "Uso de IA",
+  "panel.refresh": "Consultar ahora",
+  "panel.offline": "El daemon no está corriendo:\nsystemctl --user start codenotch",
+  "panel.no_reading": "sin lectura todavía",
+  "panel.footer": "Actualizado {ago} · clic derecho en la barra para consultar",
+
+  "tooltip.offline": "codenotch: el daemon no está corriendo",
+  "tooltip.no_providers": "codenotch: sin proveedores",
+  "tooltip.stale": "sin actualizar",
+
+  "activity.busy": "trabajando",
+  "activity.waiting": "te espera",
+  "activity.done": "terminó",
+  "activity.idle": "inactiva",
+
+  "time.just_now": "hace un momento",
+  "time.minutes_ago": "hace {n} min",
+  "time.hours_ago": "hace {n} h",
+
+  "reset.now": "reinicia ya",
+  "reset.in_days": "reinicia en {d} d {h} h",
+  "reset.in_hours": "reinicia en {h} h {m} min",
+  "reset.in_minutes": "reinicia en {m} min",
+
+  "window.session": "Sesión 5 h",
+  "window.week": "Semana",
+  "window.week_model": "Semana · {model}",
+  "window.month": "Mes",
+  "window.hours": "{n} h",
+  "window.days": "{n} días",
+  "window.extra": "Uso extra (mes)",
+  "window.credits": "Créditos del mes",
+  "window.generic": "Ventana",
+
+  "amount.credits": "{used} / {total} créditos",
+  "amount.money": "{used} / {total} {unit}",
+
+  "error.auth.claude": "Token caducado: abre Claude Code en esta cuenta",
+  "error.auth.codex": "Sesión caducada: ejecuta codex",
+  "error.auth.kiro": "Sin sesión: ejecuta kiro-cli login",
+  "error.rate_limited": "Demasiadas consultas (429), en espera",
+  "error.network": "Error de red, reintentando",
+  "error.other": "{message}"
 }

@@ -45,6 +45,8 @@ struct Config {
     notify_noctalia: bool,
     /// Notificación de escritorio al cruzar el 80 % y el 100 % de la ventana principal.
     alerts: bool,
+    /// Idioma de las alertas: `auto` (según `LC_MESSAGES`/`LANG`), `en` o `es`.
+    language: String,
 }
 
 impl Default for Config {
@@ -60,6 +62,7 @@ impl Default for Config {
             kiro: true,
             notify_noctalia: true,
             alerts: true,
+            language: "auto".into(),
         }
     }
 }
@@ -68,10 +71,23 @@ fn load_config() -> Config {
     let path = util::config_dir().join("config.json");
     match std::fs::read_to_string(&path) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
-            eprintln!("codenotch: {} inválido ({e}); uso valores por defecto", path.display());
+            eprintln!("codenotch: invalid {} ({e}); using defaults", path.display());
             Config::default()
         }),
         Err(_) => Config::default(),
+    }
+}
+
+/// ¿Alertas en español? Lo que diga la config, o el locale de mensajes.
+fn spanish(cfg: &Config) -> bool {
+    match cfg.language.as_str() {
+        "es" => true,
+        "en" => false,
+        _ => ["LC_ALL", "LC_MESSAGES", "LANG"]
+            .iter()
+            .filter_map(|v| std::env::var(v).ok())
+            .find(|v| !v.is_empty())
+            .is_some_and(|v| v.starts_with("es")),
     }
 }
 
@@ -102,6 +118,7 @@ struct Provider {
     interval: i64,
     reading: Option<Reading>,
     error: Option<String>,
+    error_code: Option<&'static str>,
     auth_error: bool,
     next_at: i64,
     failures: u32,
@@ -121,6 +138,7 @@ fn discover(cfg: &Config) -> Vec<Provider> {
         interval,
         reading: None,
         error: None,
+        error_code: None,
         auth_error: false,
         next_at: 0,
         failures: 0,
@@ -174,6 +192,8 @@ struct Cached {
     reading: Option<Reading>,
     error: Option<String>,
     #[serde(default)]
+    error_code: Option<String>,
+    #[serde(default)]
     auth_error: bool,
     next_at: i64,
     failures: u32,
@@ -181,6 +201,16 @@ struct Cached {
     alerted: u8,
     #[serde(default)]
     alerted_reset: Option<i64>,
+}
+
+/// Vuelve a `&'static str` un código leído de la caché.
+fn error_code(code: &str) -> &'static str {
+    match code {
+        "auth" => "auth",
+        "rate_limited" => "rate_limited",
+        "network" => "network",
+        _ => "other",
+    }
 }
 
 fn cache_path() -> PathBuf {
@@ -198,6 +228,7 @@ fn load_cache(providers: &mut [Provider]) {
         if let Some(c) = map.remove(&p.id) {
             p.reading = c.reading;
             p.error = c.error;
+            p.error_code = c.error_code.as_deref().map(error_code);
             p.auth_error = c.auth_error;
             p.failures = c.failures;
             p.alerted = c.alerted;
@@ -217,6 +248,7 @@ fn save_cache(providers: &[Provider]) {
                 Cached {
                     reading: p.reading.clone(),
                     error: p.error.clone(),
+                    error_code: p.error_code.map(String::from),
                     auth_error: p.auth_error,
                     next_at: p.next_at,
                     failures: p.failures,
@@ -336,6 +368,9 @@ struct OutProvider {
     stale: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// `auth`, `rate_limited`, `network` u `other`: lo que traduce la UI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_code: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     activity: Option<Activity>,
 }
@@ -355,6 +390,7 @@ fn snapshot(providers: &[Provider], activity: &HashMap<String, Activity>, now: i
                 fetched_at: r.map(|r| r.fetched_at),
                 stale: r.is_none_or(|r| p.error.is_some() || now - r.fetched_at > 3 * p.interval),
                 error: p.error.clone(),
+                error_code: p.error_code,
                 activity: activity.get(&p.id).cloned(),
             }
         })
@@ -392,9 +428,33 @@ fn adjust_schedule(p: &mut Provider, activity: &HashMap<String, Activity>, busy_
     }
 }
 
+/// Nombre de la ventana para las alertas; en inglés es el `label` del daemon.
+fn window_label(w: &Window, es: bool) -> String {
+    if !es {
+        return w.label.clone();
+    }
+    let base = match w.id.as_str() {
+        "session" => "Sesión 5 h".to_string(),
+        "week" => "Semana".into(),
+        "extra" => "Uso extra (mes)".into(),
+        "credits" => "Créditos del mes".into(),
+        id if id.starts_with("week_") => w.label.replace("Week", "Semana"),
+        _ => match w.duration {
+            Some(s) if (6 * 86400..=8 * 86400).contains(&s) => "Semana".into(),
+            Some(s) if (27 * 86400..=32 * 86400).contains(&s) => "Mes".into(),
+            Some(s) if s < 86400 => format!("{} h", (s + 1800) / 3600),
+            _ => w.label.clone(),
+        },
+    };
+    match &w.group {
+        Some(g) => format!("{g} · {base}"),
+        None => base,
+    }
+}
+
 /// Avisa una vez al cruzar el 80 % y el 100 % de la ventana principal, y de
 /// nuevo solo cuando esa ventana se reinicia.
-fn check_alert(p: &mut Provider) {
+fn check_alert(p: &mut Provider, es: bool) {
     let Some(w) = p.reading.as_ref().and_then(|r| r.windows.first()) else {
         return;
     };
@@ -423,10 +483,23 @@ fn check_alert(p: &mut Provider) {
         Kind::Claude(_) => format!("Claude {}", p.label),
         _ => p.label.clone(),
     };
-    let title = format!("{who}: {:.0}% de {}", w.used * 100.0, w.label);
+    let label = window_label(w, es);
+    let pct = w.used * 100.0;
+    let title = if es {
+        format!("{who}: {pct:.0}% de {label}")
+    } else {
+        format!("{who}: {pct:.0}% of {label}")
+    };
     let body = w
         .resets_at
-        .map(|t| format!("Reinicia a las {}", util::clock(t)))
+        .map(|t| {
+            let at = util::clock(t);
+            if es {
+                format!("Reinicia a las {at}")
+            } else {
+                format!("Resets at {at}")
+            }
+        })
         .unwrap_or_default();
     let urgency = if level == 100 { "critical" } else { "normal" };
     if cfg!(test) {
@@ -464,12 +537,14 @@ fn apply(p: &mut Provider, res: Result<Reading, FetchError>, now: i64) {
         Ok(r) => {
             p.reading = Some(r);
             p.error = None;
+            p.error_code = None;
             p.auth_error = false;
             p.failures = 0;
             p.next_at = now + p.interval;
         }
         Err(e) => {
             p.error = Some(e.message());
+            p.error_code = Some(e.code());
             p.failures = p.failures.saturating_add(1);
             p.auth_error = matches!(e, FetchError::Auth(_));
             let backoff = |base: i64, cap: i64| (base << (p.failures.min(6) - 1)).min(cap);
@@ -480,7 +555,7 @@ fn apply(p: &mut Provider, res: Result<Reading, FetchError>, now: i64) {
                     // Anthropic responde `Retry-After: 0`: el valor solo sube el
                     // mínimo; la espera se dobla con cada 429 seguido, hasta 15 min.
                     FetchError::RateLimited(s) => s.unwrap_or(0).max(backoff(60, 900)).min(3600),
-                    FetchError::Other(_) => backoff(60, 900),
+                    FetchError::Network(_) | FetchError::Other(_) => backoff(60, 900),
                 };
         }
     }
@@ -488,14 +563,14 @@ fn apply(p: &mut Provider, res: Result<Reading, FetchError>, now: i64) {
 
 fn daemon() {
     let Some(_lock) = lock_single_instance() else {
-        eprintln!("codenotch: ya hay un daemon corriendo");
+        eprintln!("codenotch: a daemon is already running");
         std::process::exit(1);
     };
     let cfg = load_config();
     let mut providers = discover(&cfg);
     load_cache(&mut providers);
     eprintln!(
-        "codenotch: vigilando {}",
+        "codenotch: watching {}",
         providers.iter().map(|p| p.id.as_str()).collect::<Vec<_>>().join(", ")
     );
 
@@ -591,7 +666,7 @@ fn daemon() {
                 if let Some(p) = providers.iter_mut().find(|p| p.id == id) {
                     apply(p, res, util::now());
                     if cfg.alerts {
-                        check_alert(p);
+                        check_alert(p, spanish(&cfg));
                     }
                     cache_dirty = true;
                 }
@@ -667,7 +742,7 @@ fn daemon() {
 fn refresh() {
     let s = UnixDatagram::unbound().expect("socket");
     if s.send_to(b"refresh", util::socket_path()).is_err() {
-        eprintln!("codenotch: el daemon no está corriendo (systemctl --user start codenotch)");
+        eprintln!("codenotch: the daemon is not running (systemctl --user start codenotch)");
         std::process::exit(1);
     }
 }
@@ -676,21 +751,21 @@ fn fmt_reset(t: Option<i64>, now: i64) -> String {
     let Some(t) = t else { return String::new() };
     let d = t - now;
     if d <= 0 {
-        return " · reinicia ya".into();
+        return " · resets now".into();
     }
     let (days, h, m) = (d / 86400, d % 86400 / 3600, d % 3600 / 60);
     if days > 0 {
-        format!(" · reinicia en {days} d {h} h")
+        format!(" · resets in {days} d {h} h")
     } else if h > 0 {
-        format!(" · reinicia en {h} h {m} min")
+        format!(" · resets in {h} h {m} min")
     } else {
-        format!(" · reinicia en {m} min")
+        format!(" · resets in {m} min")
     }
 }
 
 fn status() {
     let Some(v) = util::read_json(&util::state_file()) else {
-        eprintln!("codenotch: no hay estado todavía (¿está corriendo el daemon?)");
+        eprintln!("codenotch: no state yet (is the daemon running?)");
         std::process::exit(1);
     };
     let now = now();
@@ -699,13 +774,17 @@ fn status() {
         let kind = p["kind"].as_str().unwrap_or("?");
         let plan = p["plan"].as_str().map(|s| format!(" ({s})")).unwrap_or_default();
         let act = p["activity"]["state"].as_str().map(|s| format!(" — {s}")).unwrap_or_default();
-        let stale = if p["stale"] == true { " [desactualizado]" } else { "" };
+        let stale = if p["stale"] == true { " [stale]" } else { "" };
         println!("{kind}:{label}{plan}{act}{stale}");
         for w in p["windows"].as_array().into_iter().flatten() {
             let used = w["used"].as_f64().unwrap_or(0.0) * 100.0;
-            let detail = w["detail"].as_str().map(|d| format!(" · {d}")).unwrap_or_default();
+            let a = &w["amount"];
+            let detail = match (a["used"].as_f64(), a["total"].as_f64()) {
+                (Some(u), Some(t)) => format!(" · {u:.2} / {t:.0} {}", a["unit"].as_str().unwrap_or("")),
+                _ => String::new(),
+            };
             println!(
-                "  {:<18} {:>5.1}%{}{}",
+                "  {:<20} {:>5.1}%{}{}",
                 w["label"].as_str().unwrap_or(""),
                 used,
                 detail,
@@ -740,7 +819,7 @@ fn main() {
         Some("once") => once(),
         Some("-V" | "--version") => println!("codenotch {}", env!("CARGO_PKG_VERSION")),
         _ => {
-            eprintln!("uso: codenotch [daemon|refresh|status|once|--version]");
+            eprintln!("usage: codenotch [daemon|refresh|status|once|--version]");
             std::process::exit(2);
         }
     }
@@ -764,12 +843,14 @@ mod tests {
                     used,
                     resets_at,
                     duration: None,
-                    detail: None,
+                    group: None,
+                    amount: None,
                 }],
                 plan: None,
                 fetched_at,
             }),
             error: None,
+            error_code: None,
             auth_error: false,
             next_at: fetched_at + 300,
             failures: 0,
@@ -782,20 +863,20 @@ mod tests {
     #[test]
     fn alert_once_per_crossing_and_window() {
         let mut p = provider(0.85, Some(1000), 0);
-        check_alert(&mut p);
+        check_alert(&mut p, false);
         assert_eq!(p.alerted, 80);
         // Misma ventana (con baile de milisegundos): no repite.
         p.reading.as_mut().unwrap().windows[0].resets_at = Some(1001);
-        check_alert(&mut p);
+        check_alert(&mut p, false);
         assert_eq!(p.alerted, 80);
         p.reading.as_mut().unwrap().windows[0].used = 1.0;
-        check_alert(&mut p);
+        check_alert(&mut p, false);
         assert_eq!(p.alerted, 100);
         // Ventana nueva por debajo del umbral: se rearma.
         let w = &mut p.reading.as_mut().unwrap().windows[0];
         w.used = 0.1;
         w.resets_at = Some(19000);
-        check_alert(&mut p);
+        check_alert(&mut p, false);
         assert_eq!(p.alerted, 0);
     }
 

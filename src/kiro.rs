@@ -11,7 +11,7 @@
 //! propio hilo. Al vencer el tiempo se mata el grupo de procesos entero:
 //! kiro-cli lanza hijos que sobrevivirían a un kill del padre.
 
-use crate::model::{clamp01, FetchError, Reading, Window};
+use crate::model::{clamp01, Amount, FetchError, Reading, Window};
 use crate::util::{home, local_midnight, now, strip_ansi};
 use std::io::Read;
 use std::os::unix::process::CommandExt;
@@ -45,7 +45,7 @@ pub fn fetch(binary: &PathBuf) -> Result<Reading, FetchError> {
         .stderr(Stdio::piped())
         .process_group(0)
         .spawn()
-        .map_err(|e| FetchError::Other(format!("no se pudo lanzar kiro-cli: {e}")))?;
+        .map_err(|e| FetchError::Other(format!("could not start kiro-cli: {e}")))?;
     let pid = child.id() as i32;
 
     // Se drenan ambas tuberías mientras corre: una llena bloquearía al hijo.
@@ -73,7 +73,7 @@ pub fn fetch(binary: &PathBuf) -> Result<Reading, FetchError> {
     let Some(status) = status else {
         unsafe { libc::killpg(pid, libc::SIGKILL) };
         let _ = child.wait();
-        return Err(FetchError::Other("kiro-cli no respondió a tiempo".into()));
+        return Err(FetchError::Other("kiro-cli timed out".into()));
     };
     // Si un nieto se quedó con la tubería, que no bloquee la lectura.
     unsafe { libc::killpg(pid, libc::SIGKILL) };
@@ -88,7 +88,7 @@ pub fn fetch(binary: &PathBuf) -> Result<Reading, FetchError> {
     };
     let reading = parse(&text, now());
     if reading.is_err() && !status.success() {
-        return Err(FetchError::Auth("kiro-cli sin sesión: ejecuta kiro-cli login".into()));
+        return Err(FetchError::Auth("kiro-cli is not signed in: run kiro-cli login".into()));
     }
     reading
 }
@@ -118,7 +118,7 @@ pub fn parse(raw: &str, now: i64) -> Result<Reading, FetchError> {
         .iter()
         .any(|m| lower.contains(m))
     {
-        return Err(FetchError::Auth("kiro-cli sin sesión: ejecuta kiro-cli login".into()));
+        return Err(FetchError::Auth("kiro-cli is not signed in: run kiro-cli login".into()));
     }
 
     let plan = text
@@ -156,20 +156,21 @@ pub fn parse(raw: &str, now: i64) -> Result<Reading, FetchError> {
 
     let Some(used) = used else {
         return Err(FetchError::Other(if plan.is_some() {
-            "Kiro no informó créditos".into()
+            "Kiro reported no credits".into()
         } else {
-            "salida de kiro-cli no reconocida".into()
+            "unrecognised kiro-cli output".into()
         }));
     };
 
     Ok(Reading {
         windows: vec![Window {
             id: "credits".into(),
-            label: "Créditos del mes".into(),
+            label: "Monthly credits".into(),
             used: clamp01(used),
             resets_at,
             duration: None,
-            detail: credits.map(|(u, t)| format!("{u:.2} / {t:.0} créditos")),
+            group: None,
+            amount: credits.map(|(used, total)| Amount { used, total, unit: "credits".into() }),
         }],
         plan,
         fetched_at: now,
@@ -188,7 +189,8 @@ mod tests {
         let r = parse(out, 0).unwrap();
         assert_eq!(r.plan.as_deref(), Some("Kiro Power"));
         assert!((r.windows[0].used - 0.06).abs() < 1e-9);
-        assert_eq!(r.windows[0].detail.as_deref(), Some("604.88 / 10000 créditos"));
+        let a = r.windows[0].amount.as_ref().unwrap();
+        assert_eq!((a.used, a.total, a.unit.as_str()), (604.88, 10000.0, "credits"));
         assert!(r.windows[0].resets_at.is_some());
     }
 

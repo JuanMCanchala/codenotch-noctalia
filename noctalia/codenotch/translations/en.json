@@ -1,4 +1,53 @@
 {
   "settings.show_percent.label": "Show percentages",
-  "settings.show_percent.description": "Print each provider's usage next to its icon. Off keeps the bar to icons only."
+  "settings.show_percent.description": "Print each provider's usage next to its icon. Off keeps the bar to icons only.",
+  "settings.language.label": "Language",
+  "settings.language.description": "Language of the widget and panel. Auto follows Noctalia's own language.",
+  "settings.language.auto": "Same as Noctalia",
+  "settings.language.en": "English",
+  "settings.language.es": "Español",
+
+  "panel.title": "AI usage",
+  "panel.refresh": "Read now",
+  "panel.offline": "The daemon is not running:\nsystemctl --user start codenotch",
+  "panel.no_reading": "no reading yet",
+  "panel.footer": "Updated {ago} · right-click the bar to read now",
+
+  "tooltip.offline": "codenotch: the daemon is not running",
+  "tooltip.no_providers": "codenotch: no providers found",
+  "tooltip.stale": "not updated",
+
+  "activity.busy": "working",
+  "activity.waiting": "waiting on you",
+  "activity.done": "finished",
+  "activity.idle": "idle",
+
+  "time.just_now": "just now",
+  "time.minutes_ago": "{n} min ago",
+  "time.hours_ago": "{n} h ago",
+
+  "reset.now": "resets now",
+  "reset.in_days": "resets in {d} d {h} h",
+  "reset.in_hours": "resets in {h} h {m} min",
+  "reset.in_minutes": "resets in {m} min",
+
+  "window.session": "5-hour session",
+  "window.week": "Week",
+  "window.week_model": "Week · {model}",
+  "window.month": "Month",
+  "window.hours": "{n} h",
+  "window.days": "{n} days",
+  "window.extra": "Extra usage (month)",
+  "window.credits": "Monthly credits",
+  "window.generic": "Window",
+
+  "amount.credits": "{used} / {total} credits",
+  "amount.money": "{used} / {total} {unit}",
+
+  "error.auth.claude": "Token expired: open Claude Code with this account",
+  "error.auth.codex": "Session expired: run codex",
+  "error.auth.kiro": "Not signed in: run kiro-cli login",
+  "error.rate_limited": "Too many requests (429), waiting",
+  "error.network": "Network error, retrying",
+  "error.other": "{message}"
 }

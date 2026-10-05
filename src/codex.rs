@@ -15,11 +15,11 @@ pub fn available() -> bool {
 
 pub fn fetch(agent: &ureq::Agent) -> Result<Reading, FetchError> {
     let auth = read_json(&home().join(".codex/auth.json"))
-        .ok_or_else(|| FetchError::Auth("sin ~/.codex/auth.json".into()))?;
+        .ok_or_else(|| FetchError::Auth("no ~/.codex/auth.json".into()))?;
     let token = auth
         .pointer("/tokens/access_token")
         .and_then(Value::as_str)
-        .ok_or_else(|| FetchError::Auth("Codex no tiene sesión de ChatGPT".into()))?;
+        .ok_or_else(|| FetchError::Auth("Codex has no ChatGPT sign-in".into()))?;
     let mut req = agent
         .get(USAGE_URL)
         .set("Authorization", &format!("Bearer {token}"))
@@ -30,17 +30,17 @@ pub fn fetch(agent: &ureq::Agent) -> Result<Reading, FetchError> {
     let body: Value = match req.call() {
         Ok(r) => r
             .into_json()
-            .map_err(|e| FetchError::Other(format!("respuesta ilegible: {e}")))?,
+            .map_err(|e| FetchError::Other(format!("unreadable response: {e}")))?,
         Err(ureq::Error::Status(429, r)) => {
             return Err(FetchError::RateLimited(
                 r.header("retry-after").and_then(|s| s.trim().parse().ok()),
             ))
         }
         Err(ureq::Error::Status(401 | 403, _)) => {
-            return Err(FetchError::Auth("sesión caducada: ejecuta codex".into()))
+            return Err(FetchError::Auth("session expired: run codex".into()))
         }
         Err(ureq::Error::Status(code, _)) => return Err(FetchError::Other(format!("HTTP {code}"))),
-        Err(e) => return Err(FetchError::Other(format!("red: {e}"))),
+        Err(e) => return Err(FetchError::Network(format!("network: {e}"))),
     };
     Ok(parse(&body, now()))
 }
@@ -51,14 +51,15 @@ fn window(id: &str, w: &Value, label: Option<&str>, now: i64) -> Option<Window> 
     let resets_at = w.get("reset_at").and_then(Value::as_i64).or_else(|| {
         w.get("reset_after_seconds").and_then(Value::as_i64).map(|s| now + s)
     });
-    let base = duration.map(duration_label).unwrap_or_else(|| "Ventana".into());
+    let base = duration.map(duration_label).unwrap_or_else(|| "Window".into());
     Some(Window {
         id: id.into(),
         label: label.map(|l| format!("{l} · {base}")).unwrap_or(base),
         used: clamp01(pct / 100.0),
         resets_at,
         duration,
-        detail: None,
+        group: label.map(String::from),
+        amount: None,
     })
 }
 
@@ -116,7 +117,7 @@ mod tests {
         let r = parse(&body, 0);
         assert_eq!(r.plan.as_deref(), Some("Free"));
         assert_eq!(r.windows.len(), 1);
-        assert_eq!(r.windows[0].label, "Mes");
+        assert_eq!(r.windows[0].label, "Month");
         assert_eq!(r.windows[0].resets_at, Some(1793761123));
         assert!((r.windows[0].used - 0.02).abs() < 1e-9);
     }
@@ -132,6 +133,6 @@ mod tests {
         let r = parse(&body, 1000);
         assert_eq!(r.windows[0].label, "5 h");
         assert_eq!(r.windows[0].resets_at, Some(1060));
-        assert_eq!(r.windows[1].label, "Semana");
+        assert_eq!(r.windows[1].label, "Week");
     }
 }
