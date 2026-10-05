@@ -1,0 +1,4 @@
+{
+  "settings.show_percent.label": "Mostrar porcentajes",
+  "settings.show_percent.description": "Escribe el uso de cada proveedor junto a su icono. Apagado deja solo los iconos."
+}

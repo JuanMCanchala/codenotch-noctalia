@@ -1,0 +1,14 @@
+[Unit]
+Description=Codenotch: uso de límites de Claude, Codex y Kiro para Noctalia
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/codenotch daemon
+Restart=on-failure
+RestartSec=10
+Nice=10
+# Solo lee credenciales y escribe en sus propias carpetas.
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

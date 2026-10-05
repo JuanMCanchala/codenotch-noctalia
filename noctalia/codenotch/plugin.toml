@@ -1,0 +1,35 @@
+id          = "juanmcanchala/codenotch"
+name        = "Codenotch"
+version     = "0.1.0"
+plugin_api  = 24
+author      = "JuanMCanchala"
+license     = "MIT"
+icon        = "gauge"
+description = "Uso de los límites de Claude (varias cuentas), Codex y Kiro, y si Claude está trabajando o te espera."
+tags        = ["ai", "usage", "claude"]
+dependencies = ["codenotch"]
+
+# Lee $XDG_RUNTIME_DIR/codenotch/state.json (lo escribe `codenotch daemon`)
+# y lo publica para el widget y el panel.
+[[service]]
+id    = "service"
+entry = "service.luau"
+
+[[widget]]
+id    = "usage"
+entry = "widget.luau"
+
+  [[widget.setting]]
+  key             = "show_percent"
+  type            = "bool"
+  label_key       = "settings.show_percent.label"
+  description_key = "settings.show_percent.description"
+  default         = false
+
+[[panel]]
+id              = "panel"
+entry           = "panel.luau"
+width           = 380
+height          = 660
+placement       = "floating"
+open_near_click = true

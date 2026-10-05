@@ -1,0 +1,4 @@
+{
+  "settings.show_percent.label": "Show percentages",
+  "settings.show_percent.description": "Print each provider's usage next to its icon. Off keeps the bar to icons only."
+}
